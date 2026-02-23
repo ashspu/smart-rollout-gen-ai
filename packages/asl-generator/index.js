@@ -94,7 +94,7 @@ export function generateASL(flowDefinition, options = {}) {
   });
 
   // 3. Pre-generate unique state names.
-  const usedNames = new Set(['FlowComplete', 'HandleFlowError']);
+  const usedNames = new Set(['FlowComplete']);
   const stateNameMap = new Map(); // key: `${phaseId}::${stepId}` → stateName
 
   orderedPairs.forEach(({ phase, step }) => {
@@ -188,12 +188,6 @@ export function generateASL(flowDefinition, options = {}) {
   // Terminal states.
   states['FlowComplete'] = {
     Type: 'Succeed',
-  };
-
-  states['HandleFlowError'] = {
-    Type: 'Fail',
-    Error: 'FlowExecutionFailed',
-    Cause: 'Unrecoverable error in flow execution.',
   };
 
   // 5. Determine StartAt.

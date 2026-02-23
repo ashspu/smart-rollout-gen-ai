@@ -51,7 +51,7 @@ function generateASL(flowDefinition, options = {}) {
     });
   });
 
-  const usedNames = new Set(['FlowComplete', 'HandleFlowError']);
+  const usedNames = new Set(['FlowComplete']);
   const stateNameMap = new Map();
 
   orderedPairs.forEach(({ phase, step }) => {
@@ -135,12 +135,6 @@ function generateASL(flowDefinition, options = {}) {
   });
 
   states['FlowComplete'] = { Type: 'Succeed' };
-  states['HandleFlowError'] = {
-    Type: 'Fail',
-    Error: 'FlowExecutionFailed',
-    Cause: 'Unrecoverable error in flow execution.',
-  };
-
   const firstPair = orderedPairs[0];
   const startAt = nameOf(firstPair.phase, firstPair.step);
 
