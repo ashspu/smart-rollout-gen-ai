@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd gqc_v03 && npm install && npm run build",
+  "outputDirectory": "gqc_v03/dist",
+  "installCommand": "cd gqc_v03 && npm install",
+  "framework": "vite"
+}
