@@ -11,7 +11,7 @@ import { generateASL, validateASL } from '../../../packages/asl-generator/index.
 import api from '../utils/apiClient';
 
 
-export default function FlowBuilderModal({ isOpen, onClose }) {
+export default function FlowBuilderModal({ isOpen, onClose, onProgramCreated }) {
   const svgRef = useRef();
   const zoomRef = useRef(null);
   
@@ -41,6 +41,10 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
   const [templateSaved, setTemplateSaved] = useState(false);
+
+  // Program name state
+  const [programName, setProgramName] = useState('');
+  const [createdProgramId, setCreatedProgramId] = useState(null);
 
   // Generation state
   const [generating, setGenerating] = useState(false);
@@ -290,15 +294,24 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
   };
 
   const handleGenerate = async () => {
+    if (!programName.trim()) {
+      setGenerationError('Please enter a program name.');
+      return;
+    }
+
     setStep('generate');
     setGenerating(true);
     setGenerationProgress([]);
     setAslDefinition(null);
     setGenerationError(null);
+    setCreatedProgramId(null);
 
     const addProgress = (label, status = 'running') => {
       setGenerationProgress(prev => [...prev, { label, status }]);
       return prev => prev.map((s, i, arr) => i === arr.length - 1 ? { ...s, status: 'complete' } : s);
+    };
+    const markComplete = () => {
+      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
     };
 
     try {
@@ -307,48 +320,66 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
       await new Promise(r => setTimeout(r, 300));
       const enabledCount = getEnabledSteps().length;
       if (enabledCount === 0) throw new Error('No enabled steps in flow');
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
-      // Step 2: Generate ASL
+      // Step 2: Create program via API
+      let programId = 'preview';
+      if (api.isConfigured()) {
+        addProgress('Creating program record');
+        const programResult = await api.createProgram({
+          name: programName.trim(),
+          description: flowDefinition.description || `${flowDefinition.name} program`,
+          templateId: selectedTemplateId || 'custom',
+          flowDefinition,
+        });
+        programId = programResult.programId;
+        setCreatedProgramId(programId);
+        markComplete();
+      }
+
+      // Step 3: Generate ASL
       addProgress('Generating AWS Step Functions ASL');
       await new Promise(r => setTimeout(r, 400));
 
       let asl;
       if (api.isConfigured()) {
-        // Use API when configured
         addProgress('Calling Smart Rollout API');
-        const result = await api.generateFlow('preview', flowDefinition);
+        const result = await api.generateFlow(programId, flowDefinition);
         asl = result.aslDefinition;
-        setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+        markComplete();
       } else {
-        // Local generation for prototype / offline use
-        asl = generateASL(flowDefinition, { programId: 'preview' });
+        asl = generateASL(flowDefinition, { programId });
       }
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
-      // Step 3: Validate ASL
+      // Step 4: Validate ASL
       addProgress('Validating state machine definition');
       await new Promise(r => setTimeout(r, 300));
       const errors = validateASL(asl);
       if (errors.length > 0) throw new Error(`ASL validation failed: ${errors.join(', ')}`);
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
-      // Step 4: Configure integrations
+      // Step 5: Configure integrations
       addProgress('Configuring Celonis process model');
       await new Promise(r => setTimeout(r, 500));
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
       addProgress('Setting up conformance rules & thresholds');
       await new Promise(r => setTimeout(r, 400));
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
       addProgress('Initializing monitoring & alerting');
       await new Promise(r => setTimeout(r, 400));
-      setGenerationProgress(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'complete' } : s));
+      markComplete();
 
       setAslDefinition(asl);
       setGenerating(false);
       setStep('complete');
+
+      // Notify parent so ProgramList can refresh
+      if (programId !== 'preview' && onProgramCreated) {
+        onProgramCreated(programId);
+      }
     } catch (err) {
       setGenerationError(err.message);
       setGenerating(false);
@@ -948,36 +979,50 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between">
-              <div className="flex items-center gap-6 text-sm">
-                <div>
-                  <span className="font-semibold text-slate-900">{enabledSteps.length}</span>
-                  <span className="text-slate-500 ml-1">steps</span>
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-900">{phases.length}</span>
-                  <span className="text-slate-500 ml-1">phases</span>
-                </div>
+            <div className="px-6 py-4 border-t border-slate-200 bg-white">
+              {/* Program Name Input */}
+              <div className="flex items-center gap-3 mb-3">
+                <label className="text-sm font-medium text-slate-700 whitespace-nowrap">Program Name</label>
+                <input
+                  type="text"
+                  value={programName}
+                  onChange={(e) => setProgramName(e.target.value)}
+                  placeholder="e.g., PECO AMI 2.0 Replacement"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+                />
               </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setTemplateName(flowDefinition.name || '');
-                    setTemplateDescription(flowDefinition.description || '');
-                    setShowSaveTemplateModal(true);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  Save as Template
-                </button>
-                <button
-                  onClick={handleGenerate}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
-                >
-                  Generate Flow
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6 text-sm">
+                  <div>
+                    <span className="font-semibold text-slate-900">{enabledSteps.length}</span>
+                    <span className="text-slate-500 ml-1">steps</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-900">{phases.length}</span>
+                    <span className="text-slate-500 ml-1">phases</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setTemplateName(flowDefinition.name || '');
+                      setTemplateDescription(flowDefinition.description || '');
+                      setShowSaveTemplateModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save as Template
+                  </button>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!programName.trim()}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Generate Flow
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1226,7 +1271,9 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
                     <CheckCircle2 className="w-6 h-6 text-green-600" />
                   </div>
                   <h2 className="text-lg font-semibold text-slate-900">Flow Generated</h2>
-                  <p className="text-sm text-slate-500 mt-1">Your meter program is ready</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {programName ? <><strong>{programName}</strong> is ready</> : 'Your meter program is ready'}
+                  </p>
                 </>
               )}
             </div>
@@ -1294,12 +1341,21 @@ export default function FlowBuilderModal({ isOpen, onClose }) {
                   >
                     Close
                   </button>
-                  <button
-                    onClick={onClose}
-                    className="flex-1 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
-                  >
-                    Open Dashboard
-                  </button>
+                  {createdProgramId ? (
+                    <button
+                      onClick={() => { onClose(); onProgramCreated?.(createdProgramId); }}
+                      className="flex-1 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      Open Dashboard
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onClose}
+                      className="flex-1 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
+                    >
+                      Done
+                    </button>
+                  )}
                 </div>
               </div>
             )}

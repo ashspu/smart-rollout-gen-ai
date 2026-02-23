@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { amiProgram } from '../data/programs';
+import { useState, useEffect } from 'react';
+import { amiProgram, programs as demoPrograms } from '../data/programs';
 import ProcessMineModal from './ProcessMineModal';
-import { 
-  AlertTriangle, 
-  Clock, 
-  Target, 
-  TrendingDown, 
+import api from '../utils/apiClient';
+import {
+  AlertTriangle,
+  Clock,
+  Target,
+  TrendingDown,
   TrendingUp,
   CheckCircle2,
   XCircle,
@@ -15,12 +16,85 @@ import {
   Zap,
   ArrowRight,
   Maximize2,
-  GitBranch
+  GitBranch,
+  Loader2
 } from 'lucide-react';
 
 export default function ProgramDetail({ programId }) {
-  const program = amiProgram;
+  const isDemoProgram = demoPrograms.some(p => p.id === programId);
+  const program = isDemoProgram ? amiProgram : null;
+  const [apiProgram, setApiProgram] = useState(null);
+  const [executions, setExecutions] = useState([]);
+  const [loading, setLoading] = useState(!isDemoProgram);
   const [showProcessMine, setShowProcessMine] = useState(false);
+
+  useEffect(() => {
+    if (isDemoProgram) return;
+    (async () => {
+      try {
+        const [exResult] = await Promise.all([
+          api.listExecutions(programId, 10).catch(() => ({ executions: [] })),
+        ]);
+        setExecutions(exResult.executions || []);
+      } catch { /* ignore */ }
+      setLoading(false);
+    })();
+  }, [programId, isDemoProgram]);
+
+  // API program view
+  if (!isDemoProgram) {
+    if (loading) {
+      return (
+        <div className="py-20 text-center">
+          <Loader2 className="w-6 h-6 text-slate-400 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Loading program...</p>
+        </div>
+      );
+    }
+    return (
+      <div className="py-6 max-w-4xl mx-auto">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-pulse"></span>
+            <h1 className="text-2xl font-semibold text-slate-800">Program: {programId}</h1>
+          </div>
+          <p className="text-sm text-slate-500">API-managed program</p>
+        </div>
+
+        {/* Executions */}
+        <div className="card p-6 mb-6">
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">Executions</h2>
+          {executions.length === 0 ? (
+            <p className="text-sm text-slate-500">No executions yet. Use the API to start an execution.</p>
+          ) : (
+            <div className="space-y-3">
+              {executions.map((ex, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-slate-700">{ex.executionId}</div>
+                    <div className="text-xs text-slate-500">{ex.startedAt || 'Unknown'}</div>
+                  </div>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    ex.status === 'RUNNING' ? 'bg-blue-100 text-blue-700' :
+                    ex.status === 'SUCCEEDED' ? 'bg-green-100 text-green-700' :
+                    'bg-slate-100 text-slate-600'
+                  }`}>
+                    {ex.status || 'PENDING'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="text-center">
+          <p className="text-sm text-slate-400">
+            Full dashboard with process mining data will be available once execution data flows in.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // PM-focused data
   const pmData = {

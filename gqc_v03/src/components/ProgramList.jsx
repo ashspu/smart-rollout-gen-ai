@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronRight, Zap, TestTube, FileCheck, CheckCircle2, AlertCircle, Clock, Plus, Sparkles } from 'lucide-react';
-import { programs } from '../data/programs';
+import { programs as demoPrograms } from '../data/programs';
 import FlowBuilderModal from './FlowBuilderModal';
+import api from '../utils/apiClient';
 
 const typeIcons = {
   'AMI Rollout': Zap,
@@ -23,6 +24,39 @@ const healthConfig = {
 
 export default function ProgramList({ onSelect }) {
   const [showFlowBuilder, setShowFlowBuilder] = useState(false);
+  const [apiPrograms, setApiPrograms] = useState([]);
+
+  const fetchPrograms = useCallback(async () => {
+    if (!api.isConfigured()) return;
+    try {
+      const result = await api.listPrograms();
+      setApiPrograms(result.programs || []);
+    } catch {
+      // API unavailable — just show demo data
+    }
+  }, []);
+
+  useEffect(() => { fetchPrograms(); }, [fetchPrograms]);
+
+  // Merge demo programs with API-created programs
+  const programs = [
+    ...demoPrograms,
+    ...apiPrograms.map(p => ({
+      id: p.programId,
+      name: p.name,
+      utility: p.description || 'Custom Program',
+      type: 'AMI Rollout',
+      status: p.status || 'active',
+      meters: 0,
+      complete: 0,
+      health: p.status === 'active' ? 'on-track' : 'not-started',
+      isApi: true,
+    })),
+  ];
+
+  const handleProgramCreated = () => {
+    fetchPrograms();
+  };
 
   const formatNumber = (n) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -152,9 +186,10 @@ export default function ProgramList({ onSelect }) {
       </div>
 
       {/* Flow Builder Modal */}
-      <FlowBuilderModal 
-        isOpen={showFlowBuilder} 
-        onClose={() => setShowFlowBuilder(false)} 
+      <FlowBuilderModal
+        isOpen={showFlowBuilder}
+        onClose={() => setShowFlowBuilder(false)}
+        onProgramCreated={handleProgramCreated}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import ProgramDetail from './components/ProgramDetail';
 import LoginPage from './components/LoginPage';
 import { getCurrentSession, signOut } from './utils/auth';
 
-export const APP_VERSION = '0.3.4';
+export const APP_VERSION = '0.3.5';
 
 function App() {
   const [selectedProgram, setSelectedProgram] = useState(null);
