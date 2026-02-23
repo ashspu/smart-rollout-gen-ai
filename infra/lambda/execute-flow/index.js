@@ -2,11 +2,13 @@ const { randomUUID } = require('crypto');
 const { SFNClient, StartExecutionCommand } = require('@aws-sdk/client-sfn');
 const { docClient, GetCommand, PutCommand } = require('./shared/dynamodb');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 const sfnClient = new SFNClient({});
 
 exports.handler = async (event) => {
   try {
+    const { userId, email } = getAuthContext(event);
     const programId = event.pathParameters?.programId;
     if (!programId) return error('Missing programId', 400);
 
@@ -58,6 +60,8 @@ exports.handler = async (event) => {
       action: 'execute-flow',
       programId,
       executionId,
+      userId,
+      email,
       sfnExecutionArn: sfnResult.executionArn,
     }));
 

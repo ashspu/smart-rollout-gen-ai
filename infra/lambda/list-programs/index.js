@@ -1,10 +1,11 @@
 const { docClient, ScanCommand, QueryCommand } = require('./shared/dynamodb');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 exports.handler = async (event) => {
   try {
     const status = event.queryStringParameters?.status;
-    const tenantId = 'default';
+    const { tenantId } = getAuthContext(event);
 
     let result;
 

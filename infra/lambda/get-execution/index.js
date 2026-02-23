@@ -1,8 +1,10 @@
 const { docClient, GetCommand } = require('./shared/dynamodb');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 exports.handler = async (event) => {
   try {
+    const { userId } = getAuthContext(event);
     const programId = event.pathParameters?.programId;
     const executionId = event.pathParameters?.executionId;
     if (!programId) return error('Missing programId', 400);

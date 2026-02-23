@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { docClient, PutCommand } = require('./shared/dynamodb');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 exports.handler = async (event) => {
   try {
@@ -12,7 +13,7 @@ exports.handler = async (event) => {
 
     const now = new Date().toISOString();
     const templateId = body.templateId || `custom-${randomUUID()}`;
-    const tenantId = event.requestContext?.authorizer?.tenantId || 'default';
+    const { tenantId } = getAuthContext(event);
 
     const template = {
       templateId,

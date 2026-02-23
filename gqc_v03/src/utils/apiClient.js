@@ -3,7 +3,10 @@
  *
  * Base URL configured via VITE_API_URL environment variable.
  * All methods return promises; errors throw with message.
+ * Automatically injects Cognito ID token for authenticated requests.
  */
+
+import { getCurrentSession, signOut } from './auth';
 
 const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -14,12 +17,26 @@ async function request(path, options = {}) {
     ...options.headers,
   };
 
+  // Inject Cognito auth token
+  const session = await getCurrentSession();
+  if (session?.idToken) {
+    headers['Authorization'] = session.idToken;
+  }
+
   // Idempotency header for POST requests
   if (options.method === 'POST' && !headers['X-Client-Request-Id']) {
     headers['X-Client-Request-Id'] = crypto.randomUUID();
   }
 
   const res = await fetch(url, { ...options, headers });
+
+  // Handle 401 — force re-login
+  if (res.status === 401) {
+    signOut();
+    window.location.reload();
+    throw new Error('Session expired. Please sign in again.');
+  }
+
   const body = await res.json();
 
   if (!res.ok) {

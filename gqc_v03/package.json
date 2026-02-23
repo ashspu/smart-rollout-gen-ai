@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "amazon-cognito-identity-js": "^6.3.16",
     "d3": "^7.9.0",
     "date-fns": "^2.30.0",
     "lucide-react": "^0.294.0",

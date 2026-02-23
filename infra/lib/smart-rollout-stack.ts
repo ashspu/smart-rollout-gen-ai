@@ -6,6 +6,7 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
 
 export class SmartRolloutStack extends cdk.Stack {
@@ -46,6 +47,37 @@ export class SmartRolloutStack extends cdk.Stack {
     executionsTable.addGlobalSecondaryIndex({
       indexName: 'ExecutionLookup',
       partitionKey: { name: 'executionId', type: dynamodb.AttributeType.STRING },
+    });
+
+    // =========================================================================
+    // Cognito User Pool (email/password auth)
+    // =========================================================================
+
+    const userPool = new cognito.UserPool(this, 'SmartRolloutUsers', {
+      userPoolName: 'SmartRollout-Users',
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      autoVerify: { email: true },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: false,
+      },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const userPoolClient = new cognito.UserPoolClient(this, 'SmartRolloutWebApp', {
+      userPoolClientName: 'SmartRollout-WebApp',
+      userPool,
+      generateSecret: false,
+      authFlows: {
+        userSrp: true,
+        userPassword: true,
+      },
+      preventUserExistenceErrors: true,
     });
 
     // =========================================================================
@@ -238,34 +270,57 @@ export class SmartRolloutStack extends cdk.Stack {
       },
     });
 
+    // Cognito authorizer for all API methods
+    const authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, 'CognitoAuthorizer', {
+      cognitoUserPools: [userPool],
+      authorizerName: 'SmartRollout-CognitoAuth',
+    });
+
+    const authMethodOptions: apigateway.MethodOptions = {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    };
+
+    // Ensure CORS headers are returned on 401 (unauthorized) responses
+    api.addGatewayResponse('Unauthorized', {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': "'*'",
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Client-Request-Id'",
+      },
+      templates: {
+        'application/json': '{"message":"Unauthorized"}',
+      },
+    });
+
     // /programs
     const programs = api.root.addResource('programs');
-    programs.addMethod('POST', new apigateway.LambdaIntegration(createProgramFn));
-    programs.addMethod('GET',  new apigateway.LambdaIntegration(listProgramsFn));
+    programs.addMethod('POST', new apigateway.LambdaIntegration(createProgramFn), authMethodOptions);
+    programs.addMethod('GET',  new apigateway.LambdaIntegration(listProgramsFn), authMethodOptions);
 
     // /programs/{programId}
     const program = programs.addResource('{programId}');
 
     // /programs/{programId}/generate-flow
     const generateFlow = program.addResource('generate-flow');
-    generateFlow.addMethod('POST', new apigateway.LambdaIntegration(generateFlowFn));
+    generateFlow.addMethod('POST', new apigateway.LambdaIntegration(generateFlowFn), authMethodOptions);
 
     // /programs/{programId}/execute
     const execute = program.addResource('execute');
-    execute.addMethod('POST', new apigateway.LambdaIntegration(executeFlowFn));
+    execute.addMethod('POST', new apigateway.LambdaIntegration(executeFlowFn), authMethodOptions);
 
     // /programs/{programId}/executions
     const executions = program.addResource('executions');
-    executions.addMethod('GET', new apigateway.LambdaIntegration(listExecutionsFn));
+    executions.addMethod('GET', new apigateway.LambdaIntegration(listExecutionsFn), authMethodOptions);
 
     // /programs/{programId}/executions/{executionId}
     const execution = executions.addResource('{executionId}');
-    execution.addMethod('GET', new apigateway.LambdaIntegration(getExecutionFn));
+    execution.addMethod('GET', new apigateway.LambdaIntegration(getExecutionFn), authMethodOptions);
 
     // /templates
     const templates = api.root.addResource('templates');
-    templates.addMethod('GET',  new apigateway.LambdaIntegration(listTemplatesFn));
-    templates.addMethod('POST', new apigateway.LambdaIntegration(saveTemplateFn));
+    templates.addMethod('GET',  new apigateway.LambdaIntegration(listTemplatesFn), authMethodOptions);
+    templates.addMethod('POST', new apigateway.LambdaIntegration(saveTemplateFn), authMethodOptions);
 
     // =========================================================================
     // Outputs
@@ -284,6 +339,21 @@ export class SmartRolloutStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'StepHandlerArn', {
       value: stepHandlerFn.functionArn,
       description: 'Step handler Lambda ARN (for ASL generation)',
+    });
+
+    new cdk.CfnOutput(this, 'UserPoolId', {
+      value: userPool.userPoolId,
+      description: 'Cognito User Pool ID',
+    });
+
+    new cdk.CfnOutput(this, 'UserPoolClientId', {
+      value: userPoolClient.userPoolClientId,
+      description: 'Cognito User Pool Client ID',
+    });
+
+    new cdk.CfnOutput(this, 'CognitoRegion', {
+      value: this.region,
+      description: 'Cognito region',
     });
   }
 }

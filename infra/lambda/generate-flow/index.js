@@ -1,9 +1,11 @@
 const { docClient, GetCommand, UpdateCommand } = require('./shared/dynamodb');
 const { generateASL, validateASL } = require('./shared/asl-generator');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 exports.handler = async (event) => {
   try {
+    const { userId, email } = getAuthContext(event);
     const programId = event.pathParameters?.programId;
     if (!programId) return error('Missing programId', 400);
 
@@ -58,6 +60,8 @@ exports.handler = async (event) => {
     console.log(JSON.stringify({
       action: 'generate-flow',
       programId,
+      userId,
+      email,
       stateCount,
       phaseCount,
       enabledStepCount,

@@ -1,9 +1,10 @@
 const { docClient, ScanCommand } = require('./shared/dynamodb');
 const { success, error } = require('./shared/response');
+const { getAuthContext } = require('./shared/auth');
 
 exports.handler = async (event) => {
   try {
-    const tenantId = event.requestContext?.authorizer?.tenantId || 'default';
+    const { tenantId } = getAuthContext(event);
 
     // For now, scan with filter. When volume grows, switch to GSI query.
     const result = await docClient.send(new ScanCommand({
