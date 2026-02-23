@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --steel-light: #f8fafc;
+  --steel-mid: #e2e8f0;
+  --steel-dark: #64748b;
+  --gradient-start: #06b6d4;
+  --gradient-mid: #8b5cf6;
+  --gradient-end: #ec4899;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #e0f7fa 0%, #f3e5f5 50%, #fce4ec 100%);
+  min-height: 100vh;
+  color: #1e293b;
+}
+
+/* Apple-style card */
+.card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.card:hover {
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Steel embossed effect */
+.steel-text {
+  background: linear-gradient(180deg, #374151 0%, #1f2937 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.steel-text-light {
+  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Metric numbers - Apple style */
+.metric-value {
+  font-weight: 600;
+  font-feature-settings: 'tnum' on, 'lnum' on;
+  letter-spacing: -0.02em;
+}
+
+/* Subtle inner shadow for depth */
+.inset-shadow {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Status pill */
+.status-pill {
+  background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Chart container */
+.chart-container {
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  border-radius: 16px;
+  border: 1px solid #f1f5f9;
+}
+
+/* Process step box */
+.process-step {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.process-step:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Flow arrow */
+.flow-arrow {
+  color: #cbd5e1;
+}
+
+/* Exception card */
+.exception-card {
+  background: linear-gradient(180deg, #fef2f2 0%, #fff5f5 100%);
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+}
+
+/* Insight card */
+.insight-high {
+  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+  border-left: 3px solid #ef4444;
+}
+
+.insight-medium {
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+  border-left: 3px solid #f59e0b;
+}

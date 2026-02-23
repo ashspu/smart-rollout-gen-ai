@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.vite/
+cdk.out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# PDF research files
+*.pdf
+pdf_research/
+extracted_text/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Claude
+.claude/
+
+# Misc
+*.local
+.cache/

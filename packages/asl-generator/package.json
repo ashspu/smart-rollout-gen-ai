@@ -1,0 +1,16 @@
+{
+  "name": "@smartrollout/asl-generator",
+  "version": "1.0.0",
+  "description": "Converts Smart Rollout flow definitions to AWS Step Functions ASL",
+  "main": "index.cjs",
+  "module": "index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "files": ["index.js", "index.cjs"],
+  "license": "UNLICENSED"
+}
