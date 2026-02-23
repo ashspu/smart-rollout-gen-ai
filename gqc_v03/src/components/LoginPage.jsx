@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { signIn, completeNewPassword } from '../utils/auth';
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { APP_VERSION } from '../App';
 
 export default function LoginPage({ onAuthenticated }) {
   const [email, setEmail] = useState('');
@@ -196,6 +197,7 @@ export default function LoginPage({ onAuthenticated }) {
           <img src="/celonis-logo.png" alt="Celonis" className="h-4 object-contain" />
         </div>
       </div>
+      <div className="fixed bottom-2 right-3 text-[10px] text-slate-300">v{APP_VERSION}</div>
     </div>
   );
 }

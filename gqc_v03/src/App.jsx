@@ -5,6 +5,8 @@ import ProgramDetail from './components/ProgramDetail';
 import LoginPage from './components/LoginPage';
 import { getCurrentSession, signOut } from './utils/auth';
 
+export const APP_VERSION = '0.3.4';
+
 function App() {
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [authState, setAuthState] = useState('loading'); // 'loading' | 'authenticated' | 'unauthenticated'
@@ -60,6 +62,7 @@ function App() {
           <ProgramList onSelect={setSelectedProgram} />
         )}
       </main>
+      <div className="fixed bottom-2 right-3 text-[10px] text-slate-300">v{APP_VERSION}</div>
     </div>
   );
 }
