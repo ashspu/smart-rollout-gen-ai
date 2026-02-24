@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import ProgramList from './components/ProgramList';
-import ProgramDetail from './components/ProgramDetail';
+import ProgramPage from './components/ProgramPage';
 import LoginPage from './components/LoginPage';
 import { getCurrentSession, signOut } from './utils/auth';
 
-export const APP_VERSION = '0.3.5';
+export const APP_VERSION = '0.4.0';
 
 function App() {
   const [selectedProgram, setSelectedProgram] = useState(null);
@@ -55,13 +55,13 @@ function App() {
         onSignOut={handleSignOut}
       />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {selectedProgram ? (
-          <ProgramDetail programId={selectedProgram} />
-        ) : (
+      {selectedProgram ? (
+        <ProgramPage programId={selectedProgram} />
+      ) : (
+        <main className="max-w-6xl mx-auto px-6 py-8">
           <ProgramList onSelect={setSelectedProgram} />
-        )}
-      </main>
+        </main>
+      )}
       <div className="fixed bottom-2 right-3 text-[10px] text-slate-300">v{APP_VERSION}</div>
     </div>
   );

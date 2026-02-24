@@ -1,3 +1,12 @@
+import { meterProgramTemplates, templateToFlowDefinition } from './meterProgramTemplates';
+
+// Flow definitions for demo programs (mapped from templates)
+export const demoFlowDefinitions = {
+  'peco-ami-2': templateToFlowDefinition(meterProgramTemplates['initial-ami']),
+  'peco-periodic-test': templateToFlowDefinition(meterProgramTemplates['mass-maintenance']),
+  'peco-reg-exchange': templateToFlowDefinition(meterProgramTemplates['regulatory']),
+};
+
 // Available Meter Management Programs
 export const programs = [
   {

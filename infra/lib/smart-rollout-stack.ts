@@ -140,6 +140,7 @@ export class SmartRolloutStack extends cdk.Stack {
     // API handlers
     const createProgramFn  = makeLambda('CreateProgramFn',  'create-program');
     const listProgramsFn   = makeLambda('ListProgramsFn',   'list-programs');
+    const getProgramFn     = makeLambda('GetProgramFn',     'get-program');
     const generateFlowFn   = makeLambda('GenerateFlowFn',   'generate-flow');
     const executeFlowFn    = makeLambda('ExecuteFlowFn',    'execute-flow');
     const getExecutionFn   = makeLambda('GetExecutionFn',   'get-execution');
@@ -157,6 +158,7 @@ export class SmartRolloutStack extends cdk.Stack {
 
     programsTable.grantReadWriteData(createProgramFn);
     programsTable.grantReadData(listProgramsFn);
+    programsTable.grantReadData(getProgramFn);
     programsTable.grantReadWriteData(generateFlowFn);
     programsTable.grantReadData(executeFlowFn);
     programsTable.grantReadData(getExecutionFn);
@@ -300,6 +302,7 @@ export class SmartRolloutStack extends cdk.Stack {
 
     // /programs/{programId}
     const program = programs.addResource('{programId}');
+    program.addMethod('GET', new apigateway.LambdaIntegration(getProgramFn), authMethodOptions);
 
     // /programs/{programId}/generate-flow
     const generateFlow = program.addResource('generate-flow');

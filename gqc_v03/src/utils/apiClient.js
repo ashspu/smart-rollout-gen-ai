@@ -60,6 +60,10 @@ export function listPrograms(status) {
   return request(`/programs${qs}`);
 }
 
+export function getProgram(programId) {
+  return request(`/programs/${programId}`);
+}
+
 // ── Flow Generation ──
 
 export function generateFlow(programId, flowDefinition) {
@@ -107,6 +111,7 @@ export function isConfigured() {
 export default {
   createProgram,
   listPrograms,
+  getProgram,
   generateFlow,
   executeFlow,
   getExecution,
