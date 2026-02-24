@@ -125,6 +125,14 @@ export default function ExecutionView({ programId, programData, isDemo }) {
     fetchExecutions().finally(() => setLoadingExec(false));
   }, [programId, isDemo, fetchExecutions]);
 
+  // Auto-poll every 3s when any execution is RUNNING
+  const hasRunning = executions.some(ex => ex.status === 'RUNNING');
+  useEffect(() => {
+    if (isDemo || !hasRunning) return;
+    const interval = setInterval(fetchExecutions, 3000);
+    return () => clearInterval(interval);
+  }, [isDemo, hasRunning, fetchExecutions]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchExecutions();
