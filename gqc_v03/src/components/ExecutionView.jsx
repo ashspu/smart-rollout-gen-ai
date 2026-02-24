@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ProcessMineModal from './ProcessMineModal';
 import RunExecutionDialog from './RunExecutionDialog';
+import ExecutionFlowVis from './ExecutionFlowVis';
 import api from '../utils/apiClient';
 import {
   AlertTriangle,
@@ -108,6 +109,7 @@ export default function ExecutionView({ programId, programData, isDemo }) {
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [expandedExec, setExpandedExec] = useState(null);
+  const [showFlowVis, setShowFlowVis] = useState({});
 
   const fetchExecutions = useCallback(async () => {
     if (isDemo) return;
@@ -510,6 +512,31 @@ export default function ExecutionView({ programId, programData, isDemo }) {
                                   </span>
                                 ))}
                               </div>
+                            </div>
+                          )}
+
+                          {/* Flow Visualization */}
+                          {programData?.flowDefinition && (
+                            <div className="mt-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowFlowVis(prev => ({ ...prev, [rid]: !prev[rid] }));
+                                }}
+                                className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hover:text-cyan-600 transition-colors"
+                              >
+                                <ChevronRight className={`w-3 h-3 transition-transform ${showFlowVis[rid] ? 'rotate-90' : ''}`} />
+                                <GitBranch className="w-3 h-3" />
+                                Flow Visualization
+                              </button>
+                              {showFlowVis[rid] && (
+                                <div className="mt-3 bg-white rounded-xl border border-slate-200 p-4">
+                                  <ExecutionFlowVis
+                                    flowDefinition={programData.flowDefinition}
+                                    execution={ex}
+                                  />
+                                </div>
+                              )}
                             </div>
                           )}
 
