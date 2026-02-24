@@ -29,6 +29,7 @@ exports.handler = async (event) => {
         isMilestone: !!step.milestone,
         isCustom: !!step.custom,
         conformanceTarget: step.conformance ?? 100,
+        stepIndex: allSteps.length,
       });
     }
   }
@@ -71,7 +72,7 @@ exports.handler = async (event) => {
     };
   }
 
-  const currentStep = allSteps[stepIndex];
+  const currentStep = { ...allSteps[stepIndex], totalSteps: allSteps.length };
 
   return {
     programId,

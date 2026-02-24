@@ -29,6 +29,8 @@ exports.handler = async (event) => {
     isMilestone,
     isCustom,
     conformanceTarget = 95,
+    stepIndex = 0,
+    totalSteps = 1,
     scenarioParams = {},
     s3Prefix,
     bucket,
@@ -55,8 +57,11 @@ exports.handler = async (event) => {
     const regionCount = scenarioParams.regionCount || 2;
     const failureModeBias = scenarioParams.failureModeBias || 'none';
 
-    // Scale meters per step (each step processes a subset)
-    const stepMeters = Math.max(10, Math.floor(metersCount * (0.1 + rng() * 0.3)));
+    // Pipeline model: all meters enter step 0, with gradual attrition per step.
+    // Each step loses 1-4% of meters (failures, exceptions, opt-outs).
+    // This ensures the total never exceeds metersCount and tells a coherent story.
+    const attritionPerStep = 0.01 + rng() * 0.03; // 1-4% drop per step
+    const stepMeters = Math.max(1, Math.floor(metersCount * Math.pow(1 - attritionPerStep, stepIndex)));
 
     // Generate events for this step
     const events = generateStepEvents(rolloutInstanceId, tenantId, programId, stepRunId, phaseId, stepId, stepName, stepMeters, rng, now);

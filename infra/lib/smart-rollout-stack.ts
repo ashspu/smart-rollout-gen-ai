@@ -237,6 +237,8 @@ export class SmartRolloutStack extends cdk.Stack {
             'isMilestone.$': '$.routing.currentStep.isMilestone',
             'isCustom.$': '$.routing.currentStep.isCustom',
             'conformanceTarget.$': '$.routing.currentStep.conformanceTarget',
+            'stepIndex.$': '$.routing.currentStep.stepIndex',
+            'totalSteps.$': '$.routing.currentStep.totalSteps',
             'scenarioParams.$': '$.scenarioParams',
             's3Prefix.$': '$.s3Prefix',
             'bucket.$': '$.bucket',
