@@ -51,20 +51,21 @@ function buildSegments(nodes) {
       segs.push(`M ${a.x} ${a.y} L ${b.x} ${b.y}`);
     } else {
       // Cross-phase: route down through left channel
-      const ey = a.y + R + 4;   // exit below station a
-      const ny = b.y - R - 4;   // enter above station b
-      const cr = 12;             // curve radius
+      // Start and end at node centers so animateMotion lands on the dot
+      const cr = 12;
+      const dropStart = a.y + 10;   // just below source center
+      const riseEnd = b.y - 10;     // just above target center
       segs.push([
-        `M ${a.x} ${ey}`,
-        `L ${a.x} ${ey + 10}`,
-        `Q ${a.x} ${ey + 10 + cr} ${a.x - cr} ${ey + 10 + cr}`,
-        `L ${RX + cr} ${ey + 10 + cr}`,
-        `Q ${RX} ${ey + 10 + cr} ${RX} ${ey + 10 + cr * 2}`,
-        `L ${RX} ${ny - 10 - cr * 2}`,
-        `Q ${RX} ${ny - 10 - cr} ${RX + cr} ${ny - 10 - cr}`,
-        `L ${b.x - cr} ${ny - 10 - cr}`,
-        `Q ${b.x} ${ny - 10 - cr} ${b.x} ${ny - 10}`,
-        `L ${b.x} ${ny}`,
+        `M ${a.x} ${a.y}`,
+        `L ${a.x} ${dropStart}`,
+        `Q ${a.x} ${dropStart + cr} ${a.x - cr} ${dropStart + cr}`,
+        `L ${RX + cr} ${dropStart + cr}`,
+        `Q ${RX} ${dropStart + cr} ${RX} ${dropStart + cr * 2}`,
+        `L ${RX} ${riseEnd - cr * 2}`,
+        `Q ${RX} ${riseEnd - cr} ${RX + cr} ${riseEnd - cr}`,
+        `L ${b.x - cr} ${riseEnd - cr}`,
+        `Q ${b.x} ${riseEnd - cr} ${b.x} ${riseEnd}`,
+        `L ${b.x} ${b.y}`,
       ].join(' '));
     }
   }
