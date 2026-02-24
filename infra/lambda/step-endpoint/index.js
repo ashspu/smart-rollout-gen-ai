@@ -58,9 +58,10 @@ exports.handler = async (event) => {
     const failureModeBias = scenarioParams.failureModeBias || 'none';
 
     // Pipeline model: all meters enter step 0, with gradual attrition per step.
-    // Each step loses 1-4% of meters (failures, exceptions, opt-outs).
-    // This ensures the total never exceeds metersCount and tells a coherent story.
-    const attritionPerStep = 0.01 + rng() * 0.03; // 1-4% drop per step
+    // Use a FIXED attrition rate per execution (seeded by rolloutInstanceId alone)
+    // so meters monotonically decrease across steps.
+    const execRng = seededRandom(hashCode(rolloutInstanceId));
+    const attritionPerStep = 0.01 + execRng() * 0.03; // 1-4% fixed for this execution
     const stepMeters = Math.max(1, Math.floor(metersCount * Math.pow(1 - attritionPerStep, stepIndex)));
 
     // Generate events for this step
