@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ProcessMineModal from './ProcessMineModal';
+import RunExecutionDialog from './RunExecutionDialog';
 import api from '../utils/apiClient';
 import {
   AlertTriangle,
@@ -15,7 +16,14 @@ import {
   GitBranch,
   Lightbulb,
   Loader2,
-  Play
+  Play,
+  Database,
+  Copy,
+  Check,
+  RefreshCw,
+  FolderOpen,
+  ChevronRight,
+  Hash
 } from 'lucide-react';
 
 // Demo program data
@@ -85,18 +93,56 @@ const priorityColors = {
   info: { border: '#64748b', bg: 'bg-slate-50', text: 'text-slate-700', badge: 'bg-slate-100 text-slate-600' },
 };
 
+const statusColors = {
+  RUNNING: 'bg-blue-100 text-blue-700',
+  SUCCEEDED: 'bg-green-100 text-green-700',
+  FAILED: 'bg-red-100 text-red-700',
+  PENDING: 'bg-slate-100 text-slate-600',
+};
+
 export default function ExecutionView({ programId, programData, isDemo }) {
   const [showProcessMine, setShowProcessMine] = useState(false);
+  const [showRunDialog, setShowRunDialog] = useState(false);
   const [executions, setExecutions] = useState([]);
   const [loadingExec, setLoadingExec] = useState(!isDemo);
+  const [refreshing, setRefreshing] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+  const [expandedExec, setExpandedExec] = useState(null);
+
+  const fetchExecutions = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const r = await api.listExecutions(programId, 20);
+      setExecutions(r.executions || []);
+    } catch {
+      /* ignore */
+    }
+  }, [programId, isDemo]);
 
   useEffect(() => {
     if (isDemo) return;
-    api.listExecutions(programId, 10)
-      .then(r => setExecutions(r.executions || []))
-      .catch(() => {})
-      .finally(() => setLoadingExec(false));
-  }, [programId, isDemo]);
+    setLoadingExec(true);
+    fetchExecutions().finally(() => setLoadingExec(false));
+  }, [programId, isDemo, fetchExecutions]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchExecutions();
+    setRefreshing(false);
+  };
+
+  const handleRunExecution = async (params) => {
+    const result = await api.startExecution(params);
+    // Refresh list after starting
+    await fetchExecutions();
+    return result;
+  };
+
+  const handleCopyId = async (id) => {
+    await navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const StatusBadge = ({ positive, value }) => (
     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -107,14 +153,20 @@ export default function ExecutionView({ programId, programData, isDemo }) {
     </span>
   );
 
-  const recommendations = isDemo ? demoRecommendations : apiRecommendations;
+  const recommendations = isDemo ? demoRecommendations : 
+    (executions.length > 0 ? [
+      { id: 1, action: 'Review step-level conformance across runs', reason: `${executions.length} execution(s) completed — check for consistent failure patterns`, priority: 'medium' },
+      { id: 2, action: 'Compare regional performance', reason: 'Multi-region runs can reveal geographic bottlenecks in the process', priority: 'low' },
+      { id: 3, action: 'Connect Celonis for real-time process mining', reason: 'S3 datasets are ready for ingestion into Celonis process mining', priority: 'info' },
+    ] : apiRecommendations);
+
   const pmData = demoPmData;
 
   return (
     <div className="py-6 overflow-y-auto">
       {isDemo ? (
         <>
-          {/* Demo: Full dashboard */}
+          {/* Demo: Full dashboard — unchanged */}
           <div className="flex items-center justify-between mb-8">
             <div>
               <p className="text-sm text-slate-500">{programData?.utility || 'PECO Energy'} · Day {pmData.daysElapsed} of {pmData.daysElapsed + pmData.daysRemaining}</p>
@@ -316,67 +368,187 @@ export default function ExecutionView({ programId, programData, isDemo }) {
         </>
       ) : (
         <>
-          {/* API Program: Stub analytics + executions */}
-          <div className="grid grid-cols-4 gap-4 mb-8">
-            {['Schedule', 'This Week', 'Exceptions', 'Crews'].map(label => (
-              <div key={label} className="card p-5">
-                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">{label}</div>
-                <div className="text-2xl font-bold text-slate-300">--</div>
-                <p className="text-xs text-slate-400 mt-2">Awaiting Celonis data</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Executions */}
+          {/* API Program: Executions List keyed by rolloutInstanceId */}
           <div className="card p-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">Executions</h2>
-              <button
-                onClick={async () => {
-                  try {
-                    await api.executeFlow(programId);
-                    const r = await api.listExecutions(programId, 10);
-                    setExecutions(r.executions || []);
-                  } catch { /* ignore */ }
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg transition-colors"
-              >
-                <Play className="w-3.5 h-3.5" />
-                Run Execution
-              </button>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">Executions</h2>
+                <p className="text-sm text-slate-500">Each run is identified by a unique rolloutInstanceId</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowRunDialog(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 rounded-lg transition-all shadow-lg shadow-cyan-500/25"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  Run Execution
+                </button>
+              </div>
             </div>
+
             {loadingExec ? (
-              <div className="py-8 text-center">
-                <Loader2 className="w-5 h-5 text-slate-400 animate-spin mx-auto" />
+              <div className="py-12 text-center">
+                <Loader2 className="w-6 h-6 text-slate-400 animate-spin mx-auto" />
+                <p className="text-sm text-slate-400 mt-2">Loading executions...</p>
               </div>
             ) : executions.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4">No executions yet. Click "Run Execution" to start.</p>
+              <div className="py-12 text-center">
+                <Database className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-slate-500">No executions yet</p>
+                <p className="text-xs text-slate-400 mt-1">Click "Run Execution" to start a scenario-driven run</p>
+              </div>
             ) : (
               <div className="space-y-3">
-                {executions.map((ex, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div>
-                      <div className="text-sm font-medium text-slate-700 font-mono">{ex.executionId?.substring(0, 12)}...</div>
-                      <div className="text-xs text-slate-500">{ex.startedAt || 'Unknown'}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {ex.stepsCompleted != null && (
-                        <span className="text-xs text-slate-500">{ex.stepsCompleted}/{ex.stepsTotal} steps</span>
+                {executions.map((ex) => {
+                  const rid = ex.rolloutInstanceId || ex.executionId;
+                  const isExpanded = expandedExec === rid;
+                  return (
+                    <div key={rid} className="rounded-xl border border-slate-200 overflow-hidden">
+                      {/* Main row */}
+                      <div
+                        className="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer transition-colors"
+                        onClick={() => setExpandedExec(isExpanded ? null : rid)}
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Hash className="w-3 h-3 text-slate-400" />
+                              <code className="text-sm font-mono text-slate-700 truncate">{rid}</code>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyId(rid); }}
+                                className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                title="Copy rolloutInstanceId"
+                              >
+                                {copiedId === rid
+                                  ? <Check className="w-3 h-3 text-green-500" />
+                                  : <Copy className="w-3 h-3 text-slate-400" />
+                                }
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                              <span>{ex.startedAt ? new Date(ex.startedAt).toLocaleString() : 'Unknown'}</span>
+                              {ex.preset && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-medium uppercase">{ex.preset}</span>}
+                              {ex.metersCount && <span>{Number(ex.metersCount).toLocaleString()} meters</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 flex-shrink-0">
+                          {ex.stepsCompleted != null && (
+                            <div className="text-right">
+                              <div className="text-xs text-slate-500">{ex.stepsCompleted}/{ex.stepsTotal} steps</div>
+                              <div className="w-20 h-1.5 bg-slate-200 rounded-full mt-1">
+                                <div
+                                  className="h-full bg-cyan-500 rounded-full transition-all"
+                                  style={{ width: `${ex.stepsTotal > 0 ? (ex.stepsCompleted / ex.stepsTotal) * 100 : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusColors[ex.status] || statusColors.PENDING}`}>
+                            {ex.status || 'PENDING'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expanded detail */}
+                      {isExpanded && (
+                        <div className="border-t border-slate-200 bg-slate-50 px-4 py-4">
+                          <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div>
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Scenario</div>
+                              <div className="text-sm text-slate-700">
+                                {ex.scenarioParams?.preset || ex.preset || 'custom'} &middot; {ex.scenarioParams?.failureModeBias || 'none'} failures
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Current Phase</div>
+                              <div className="text-sm text-slate-700">{ex.currentPhase || '--'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Current Step</div>
+                              <div className="text-sm text-slate-700">{ex.currentStep || '--'}</div>
+                            </div>
+                          </div>
+
+                          {/* S3 Prefix */}
+                          {ex.s3Prefix && (
+                            <div className="mb-4">
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1">S3 Output</div>
+                              <div className="flex items-center gap-2">
+                                <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
+                                <code className="text-xs font-mono text-slate-600 break-all">{ex.s3Prefix}</code>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Datasets Written */}
+                          {ex.datasetsWritten && ex.datasetsWritten.length > 0 && (
+                            <div>
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">Datasets Written</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {ex.datasetsWritten.map(ds => (
+                                  <span key={ds} className="px-2 py-1 bg-white text-[11px] font-mono text-slate-600 rounded border border-slate-200 flex items-center gap-1">
+                                    <Database className="w-3 h-3 text-cyan-500" />
+                                    {ds}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Step Results */}
+                          {ex.stepResults && ex.stepResults.length > 0 && (
+                            <div className="mt-4">
+                              <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">Step Results</div>
+                              <div className="space-y-1">
+                                {ex.stepResults.map((sr, i) => (
+                                  <div key={i} className="flex items-center justify-between text-xs py-1 px-2 bg-white rounded border border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${sr.status === 'COMPLETED' ? 'bg-green-500' : 'bg-red-500'}`} />
+                                      <span className="text-slate-600">{sr.phaseName}</span>
+                                      <ChevronRight className="w-3 h-3 text-slate-300" />
+                                      <span className="font-medium text-slate-700">{sr.stepName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-slate-500">
+                                      {sr.metersProcessed && <span>{sr.metersProcessed} meters</span>}
+                                      {sr.conformanceActual != null && (
+                                        <span className={sr.conformanceActual >= (sr.conformanceTarget || 95) ? 'text-green-600' : 'text-amber-600'}>
+                                          {sr.conformanceActual}%
+                                        </span>
+                                      )}
+                                      <span>{sr.durationMs}ms</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        ex.status === 'RUNNING' ? 'bg-blue-100 text-blue-700' :
-                        ex.status === 'SUCCEEDED' ? 'bg-green-100 text-green-700' :
-                        ex.status === 'FAILED' ? 'bg-red-100 text-red-700' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>
-                        {ex.status || 'PENDING'}
-                      </span>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* Run Execution Dialog */}
+          <RunExecutionDialog
+            isOpen={showRunDialog}
+            onClose={() => setShowRunDialog(false)}
+            onSubmit={handleRunExecution}
+            programId={programId}
+            flowDefinition={programData?.flowDefinition}
+          />
         </>
       )}
 

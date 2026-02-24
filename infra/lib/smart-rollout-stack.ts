@@ -7,6 +7,7 @@ import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 export class SmartRolloutStack extends cdk.Stack {
@@ -50,6 +51,25 @@ export class SmartRolloutStack extends cdk.Stack {
     });
 
     // =========================================================================
+    // S3 Bucket for execution data (Parquet/NDJSON output)
+    // =========================================================================
+
+    const dataBucket = new s3.Bucket(this, 'DataBucket', {
+      bucketName: `smartrollout-data-${this.account}-${this.region}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          id: 'ExpireOldData',
+          expiration: cdk.Duration.days(90),
+          prefix: 'smartrollout/',
+        },
+      ],
+    });
+
+    // =========================================================================
     // Cognito User Pool (email/password auth)
     // =========================================================================
 
@@ -88,11 +108,12 @@ export class SmartRolloutStack extends cdk.Stack {
       PROGRAMS_TABLE: programsTable.tableName,
       TEMPLATES_TABLE: templatesTable.tableName,
       EXECUTIONS_TABLE: executionsTable.tableName,
+      DATA_BUCKET: dataBucket.bucketName,
       REGION: this.region,
       NODE_OPTIONS: '--enable-source-maps',
     };
 
-    const makeLambda = (name: string, dir: string, extra?: Record<string, string>) => {
+    const makeLambda = (name: string, dir: string, extra?: Record<string, string>, opts?: { timeout?: number; memory?: number }) => {
       return new lambda.Function(this, name, {
         functionName: `smartrollout-${dir}`,
         runtime: lambda.Runtime.NODEJS_20_X,
@@ -107,17 +128,14 @@ export class SmartRolloutStack extends cdk.Stack {
             ].join(' && ')],
             local: {
               tryBundle(outputDir: string) {
-                // Local bundling: copy handler + shared
                 const fs = require('fs');
                 const path = require('path');
                 const srcDir = path.join(__dirname, '..', 'lambda', dir);
                 const sharedDir = path.join(__dirname, '..', 'lambda', 'shared');
 
-                // Copy handler files
                 for (const f of fs.readdirSync(srcDir)) {
                   fs.copyFileSync(path.join(srcDir, f), path.join(outputDir, f));
                 }
-                // Copy shared
                 if (fs.existsSync(sharedDir)) {
                   const sharedOut = path.join(outputDir, 'shared');
                   fs.mkdirSync(sharedOut, { recursive: true });
@@ -131,26 +149,30 @@ export class SmartRolloutStack extends cdk.Stack {
           },
         }),
         environment: { ...commonEnv, ...extra },
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 256,
+        timeout: cdk.Duration.seconds(opts?.timeout || 30),
+        memorySize: opts?.memory || 256,
         tracing: lambda.Tracing.ACTIVE,
       });
     };
 
     // API handlers
-    const createProgramFn  = makeLambda('CreateProgramFn',  'create-program');
-    const listProgramsFn   = makeLambda('ListProgramsFn',   'list-programs');
-    const getProgramFn     = makeLambda('GetProgramFn',     'get-program');
-    const generateFlowFn   = makeLambda('GenerateFlowFn',   'generate-flow');
-    const executeFlowFn    = makeLambda('ExecuteFlowFn',    'execute-flow');
-    const getExecutionFn   = makeLambda('GetExecutionFn',   'get-execution');
-    const listExecutionsFn = makeLambda('ListExecutionsFn', 'list-executions');
-    const saveTemplateFn   = makeLambda('SaveTemplateFn',   'save-template');
-    const listTemplatesFn  = makeLambda('ListTemplatesFn',  'list-templates');
+    const createProgramFn    = makeLambda('CreateProgramFn',    'create-program');
+    const listProgramsFn     = makeLambda('ListProgramsFn',     'list-programs');
+    const getProgramFn       = makeLambda('GetProgramFn',       'get-program');
+    const generateFlowFn     = makeLambda('GenerateFlowFn',     'generate-flow');
+    const executeFlowFn      = makeLambda('ExecuteFlowFn',      'execute-flow');
+    const getExecutionFn     = makeLambda('GetExecutionFn',     'get-execution');
+    const listExecutionsFn   = makeLambda('ListExecutionsFn',   'list-executions');
+    const saveTemplateFn     = makeLambda('SaveTemplateFn',     'save-template');
+    const listTemplatesFn    = makeLambda('ListTemplatesFn',    'list-templates');
+
+    // New execution system handlers
+    const startExecutionFn   = makeLambda('StartExecutionFn',   'start-execution', {}, { timeout: 60, memory: 512 });
+    const executionStatusFn  = makeLambda('ExecutionStatusFn',  'execution-status');
 
     // Step Functions handlers (invoked BY the state machine)
-    const stepHandlerFn    = makeLambda('StepHandlerFn',    'step-handler');
-    const determineNextFn  = makeLambda('DetermineNextFn',  'determine-next-step');
+    const stepEndpointFn     = makeLambda('StepEndpointFn',     'step-endpoint', {}, { timeout: 60, memory: 512 });
+    const determineNextFn    = makeLambda('DetermineNextFn',    'determine-next-step');
 
     // =========================================================================
     // Table permissions
@@ -162,12 +184,19 @@ export class SmartRolloutStack extends cdk.Stack {
     programsTable.grantReadWriteData(generateFlowFn);
     programsTable.grantReadData(executeFlowFn);
     programsTable.grantReadData(getExecutionFn);
+    programsTable.grantReadData(startExecutionFn);
     templatesTable.grantReadWriteData(saveTemplateFn);
     templatesTable.grantReadData(listTemplatesFn);
     executionsTable.grantReadWriteData(executeFlowFn);
     executionsTable.grantReadWriteData(getExecutionFn);
     executionsTable.grantReadData(listExecutionsFn);
-    executionsTable.grantReadWriteData(stepHandlerFn);
+    executionsTable.grantReadWriteData(startExecutionFn);
+    executionsTable.grantReadData(executionStatusFn);
+    executionsTable.grantReadWriteData(stepEndpointFn);
+
+    // S3 permissions
+    dataBucket.grantReadWrite(startExecutionFn);
+    dataBucket.grantReadWrite(stepEndpointFn);
 
     // =========================================================================
     // Single Parameterized State Machine (loop pattern)
@@ -191,12 +220,14 @@ export class SmartRolloutStack extends cdk.Stack {
       .when(sfn.Condition.booleanEquals('$.routing.done', true),
         new sfn.Succeed(this, 'FlowComplete'))
       .otherwise(
-        // 4. Execute step (Lambda) — pass step metadata from routing
+        // 4. Execute step (Lambda) — pass step metadata + execution context from routing
         new tasks.LambdaInvoke(this, 'ExecuteStep', {
-          lambdaFunction: stepHandlerFn,
+          lambdaFunction: stepEndpointFn,
           payload: sfn.TaskInput.fromObject({
             'programId.$': '$.programId',
             'executionId.$': '$.executionId',
+            'rolloutInstanceId.$': '$.rolloutInstanceId',
+            'tenantId.$': '$.tenantId',
             'phaseId.$': '$.routing.currentStep.phaseId',
             'phaseName.$': '$.routing.currentStep.phaseName',
             'stepId.$': '$.routing.currentStep.stepId',
@@ -205,6 +236,9 @@ export class SmartRolloutStack extends cdk.Stack {
             'isMilestone.$': '$.routing.currentStep.isMilestone',
             'isCustom.$': '$.routing.currentStep.isCustom',
             'conformanceTarget.$': '$.routing.currentStep.conformanceTarget',
+            'scenarioParams.$': '$.scenarioParams',
+            's3Prefix.$': '$.s3Prefix',
+            'bucket.$': '$.bucket',
           }),
           resultPath: '$.lastResult',
           payloadResponseOnly: true,
@@ -234,7 +268,7 @@ export class SmartRolloutStack extends cdk.Stack {
       stateMachineName: 'smartrollout-flow-executor',
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
       stateMachineType: sfn.StateMachineType.STANDARD,
-      timeout: cdk.Duration.days(365), // meter programs run for months
+      timeout: cdk.Duration.days(365),
       tracingEnabled: true,
       logs: {
         destination: logGroup,
@@ -243,13 +277,21 @@ export class SmartRolloutStack extends cdk.Stack {
       },
     });
 
-    // Pass state machine ARN to execute-flow
+    // Pass state machine ARN to execution starters
     executeFlowFn.addEnvironment('STATE_MACHINE_ARN', stateMachine.stateMachineArn);
+    startExecutionFn.addEnvironment('STATE_MACHINE_ARN', stateMachine.stateMachineArn);
     stateMachine.grantStartExecution(executeFlowFn);
+    stateMachine.grantStartExecution(startExecutionFn);
 
     // get-execution needs to describe executions
     getExecutionFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['states:DescribeExecution', 'states:GetExecutionHistory'],
+      resources: [stateMachine.stateMachineArn + '/*'],
+    }));
+
+    // execution-status needs to describe executions
+    executionStatusFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:DescribeExecution'],
       resources: [stateMachine.stateMachineArn + '/*'],
     }));
 
@@ -320,6 +362,16 @@ export class SmartRolloutStack extends cdk.Stack {
     const execution = executions.addResource('{executionId}');
     execution.addMethod('GET', new apigateway.LambdaIntegration(getExecutionFn), authMethodOptions);
 
+    // /executions/start  (new — takes programId in body)
+    const executionsRoot = api.root.addResource('executions');
+    const startExecution = executionsRoot.addResource('start');
+    startExecution.addMethod('POST', new apigateway.LambdaIntegration(startExecutionFn), authMethodOptions);
+
+    // /executions/{rolloutInstanceId}/status
+    const executionInstance = executionsRoot.addResource('{rolloutInstanceId}');
+    const executionStatus = executionInstance.addResource('status');
+    executionStatus.addMethod('GET', new apigateway.LambdaIntegration(executionStatusFn), authMethodOptions);
+
     // /templates
     const templates = api.root.addResource('templates');
     templates.addMethod('GET',  new apigateway.LambdaIntegration(listTemplatesFn), authMethodOptions);
@@ -339,9 +391,14 @@ export class SmartRolloutStack extends cdk.Stack {
       description: 'Flow executor Step Functions ARN',
     });
 
-    new cdk.CfnOutput(this, 'StepHandlerArn', {
-      value: stepHandlerFn.functionArn,
-      description: 'Step handler Lambda ARN (for ASL generation)',
+    new cdk.CfnOutput(this, 'StepEndpointArn', {
+      value: stepEndpointFn.functionArn,
+      description: 'Step endpoint Lambda ARN',
+    });
+
+    new cdk.CfnOutput(this, 'DataBucketName', {
+      value: dataBucket.bucketName,
+      description: 'S3 bucket for execution data',
     });
 
     new cdk.CfnOutput(this, 'UserPoolId', {

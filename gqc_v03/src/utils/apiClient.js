@@ -73,7 +73,7 @@ export function generateFlow(programId, flowDefinition) {
   });
 }
 
-// ── Execution ──
+// ── Execution (legacy — direct Step Functions trigger) ──
 
 export function executeFlow(programId) {
   return request(`/programs/${programId}/execute`, {
@@ -87,6 +87,29 @@ export function getExecution(programId, executionId) {
 
 export function listExecutions(programId, limit = 25) {
   return request(`/programs/${programId}/executions?limit=${limit}`);
+}
+
+// ── Execution System (new — scenario-driven with rolloutInstanceId) ──
+
+/**
+ * Start a new execution run with scenario parameters.
+ * @param {{ programId: string, scenarioParams: object }} params
+ * @returns {{ rolloutInstanceId, status, s3Prefix, scenarioParams, startedAt }}
+ */
+export function startExecution(params) {
+  return request('/executions/start', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * Get execution status by rolloutInstanceId.
+ * @param {string} rolloutInstanceId
+ * @returns {{ rolloutInstanceId, status, stepsCompleted, stepsTotal, s3Prefix, datasetsWritten, ... }}
+ */
+export function getExecutionStatus(rolloutInstanceId) {
+  return request(`/executions/${rolloutInstanceId}/status`);
 }
 
 // ── Templates ──
@@ -116,6 +139,8 @@ export default {
   executeFlow,
   getExecution,
   listExecutions,
+  startExecution,
+  getExecutionStatus,
   saveTemplate,
   listTemplates,
   isConfigured,
