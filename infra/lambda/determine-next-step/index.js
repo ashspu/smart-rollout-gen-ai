@@ -1,17 +1,18 @@
+const { docClient, UpdateCommand } = require('./shared/dynamodb');
+
 /**
  * Called BY the state machine to determine the next step to execute.
  * Reads the flowDefinition and current stepIndex to return step metadata.
+ * When all steps are done, marks the execution as SUCCEEDED in DynamoDB.
  *
  * Input shape (from state machine):
- *   { programId, executionId, flowDefinition, control: { stepIndex } }
+ *   { programId, executionId, rolloutInstanceId, flowDefinition, control: { stepIndex } }
  *
  * Output shape:
- *   { programId, executionId, flowDefinition, control: { stepIndex },
- *     currentStep: { phaseId, phaseName, stepId, stepName, ... },
- *     done: boolean }
+ *   { ..., currentStep: { phaseId, phaseName, stepId, stepName, ... }, done: boolean }
  */
 exports.handler = async (event) => {
-  const { programId, executionId, flowDefinition, control } = event;
+  const { programId, executionId, rolloutInstanceId = executionId, flowDefinition, control } = event;
   const stepIndex = control?.stepIndex ?? 0;
 
   // Flatten all enabled steps across phases in order
@@ -36,15 +37,34 @@ exports.handler = async (event) => {
     action: 'determine-next-step',
     programId,
     executionId,
+    rolloutInstanceId,
     stepIndex,
     totalSteps: allSteps.length,
   }));
 
   // Check if all steps are done
   if (stepIndex >= allSteps.length) {
+    // Mark execution as SUCCEEDED in DynamoDB
+    try {
+      await docClient.send(new UpdateCommand({
+        TableName: process.env.EXECUTIONS_TABLE,
+        Key: { programId, executionId: rolloutInstanceId },
+        UpdateExpression: 'SET #status = :s, completedAt = :now, updatedAt = :now',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':s': 'SUCCEEDED',
+          ':now': new Date().toISOString(),
+        },
+      }));
+      console.log(JSON.stringify({ action: 'execution-complete', rolloutInstanceId, programId, status: 'SUCCEEDED' }));
+    } catch (err) {
+      console.error('Failed to mark execution as SUCCEEDED:', err.message);
+    }
+
     return {
       programId,
       executionId,
+      rolloutInstanceId,
       flowDefinition,
       control: { stepIndex },
       done: true,
@@ -56,6 +76,7 @@ exports.handler = async (event) => {
   return {
     programId,
     executionId,
+    rolloutInstanceId,
     flowDefinition,
     control: { stepIndex },
     currentStep,

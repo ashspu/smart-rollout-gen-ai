@@ -193,6 +193,7 @@ export class SmartRolloutStack extends cdk.Stack {
     executionsTable.grantReadWriteData(startExecutionFn);
     executionsTable.grantReadData(executionStatusFn);
     executionsTable.grantReadWriteData(stepEndpointFn);
+    executionsTable.grantReadWriteData(determineNextFn);
 
     // S3 permissions
     dataBucket.grantReadWrite(startExecutionFn);

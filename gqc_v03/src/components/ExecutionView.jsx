@@ -515,28 +515,17 @@ export default function ExecutionView({ programId, programData, isDemo }) {
                             </div>
                           )}
 
-                          {/* Flow Visualization */}
+                          {/* Flow Visualization — always shown when expanded */}
                           {programData?.flowDefinition && (
-                            <div className="mt-4">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowFlowVis(prev => ({ ...prev, [rid]: !prev[rid] }));
-                                }}
-                                className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hover:text-cyan-600 transition-colors"
-                              >
-                                <ChevronRight className={`w-3 h-3 transition-transform ${showFlowVis[rid] ? 'rotate-90' : ''}`} />
-                                <GitBranch className="w-3 h-3" />
-                                Flow Visualization
-                              </button>
-                              {showFlowVis[rid] && (
-                                <div className="mt-3 bg-white rounded-xl border border-slate-200 p-4">
-                                  <ExecutionFlowVis
-                                    flowDefinition={programData.flowDefinition}
-                                    execution={ex}
-                                  />
-                                </div>
-                              )}
+                            <div className="mt-4 bg-white rounded-xl border border-slate-200 p-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <GitBranch className="w-3.5 h-3.5 text-cyan-500" />
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Flow Progress</span>
+                              </div>
+                              <ExecutionFlowVis
+                                flowDefinition={programData.flowDefinition}
+                                execution={ex}
+                              />
                             </div>
                           )}
 
