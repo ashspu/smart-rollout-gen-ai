@@ -1,12 +1,27 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { ZoomIn, ZoomOut, RotateCcw, X } from 'lucide-react';
+import StepContextMenu from './StepContextMenu';
+import StepConfigModal from './StepConfigModal';
+import api from '../utils/apiClient';
 
-export default function DefinitionView({ flowDefinition, programName }) {
+const CONFIG_BADGE = {
+  form: { color: '#3b82f6', label: 'F' },
+  'external-api': { color: '#f59e0b', label: 'A' },
+  webhook: { color: '#22c55e', label: 'W' },
+};
+
+export default function DefinitionView({ flowDefinition, programName, programId, isDemo }) {
   const svgRef = useRef();
   const zoomRef = useRef(null);
   const [selectedStation, setSelectedStation] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [configModal, setConfigModal] = useState(null);
+  const [stepConfigs, setStepConfigs] = useState({});
+  const [stepConfigHistory, setStepConfigHistory] = useState({});
+
+  const useApiPersistence = !isDemo && api.isConfigured() && !!programId;
 
   const phases = flowDefinition?.phases || [];
 
@@ -21,7 +36,135 @@ export default function DefinitionView({ flowDefinition, programName }) {
     return result;
   }, [flowDefinition, phases]);
 
-  // D3 Visualization (read-only, adapted from FlowBuilderModal)
+  // Load step configs from API on mount
+  useEffect(() => {
+    if (!useApiPersistence) return;
+    api.listAllStepConfigs(programId)
+      .then(data => {
+        const configs = {};
+        for (const item of (data.configs || [])) {
+          const key = `${item.phaseId}#${item.stepId}`;
+          configs[key] = {
+            configType: item.configType,
+            ...(item.configType === 'form' ? { formConfig: item.config } : {}),
+            ...(item.configType === 'external-api' ? { apiConfig: item.config } : {}),
+            ...(item.configType === 'webhook' ? { webhookConfig: item.config } : {}),
+            formSchema: item.configType === 'form' ? item.config?.jsonSchema : undefined,
+            phaseId: item.phaseId,
+            stepId: item.stepId,
+            version: item.version,
+            updatedAt: item.updatedAt,
+          };
+        }
+        setStepConfigs(configs);
+      })
+      .catch(err => console.warn('Failed to load step configs:', err));
+  }, [programId, useApiPersistence]);
+
+  const handleContextMenuSelect = useCallback((action, step, phase) => {
+    if (action === 'remove') {
+      const key = `${phase.id}#${step.id}`;
+      setStepConfigs(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      if (useApiPersistence) {
+        api.deleteStepConfig(programId, phase.id, step.id)
+          .catch(err => console.error('Failed to delete step config:', err));
+      }
+      return;
+    }
+    if (action === 'versions') {
+      if (useApiPersistence) {
+        api.listStepConfigVersions(programId, phase.id, step.id)
+          .then(data => {
+            const key = `${phase.id}#${step.id}`;
+            const versions = (data.versions || []).map(v => ({
+              ...v,
+              configType: v.configType,
+              formConfig: v.configType === 'form' ? v.config : undefined,
+              apiConfig: v.configType === 'external-api' ? v.config : undefined,
+              webhookConfig: v.configType === 'webhook' ? v.config : undefined,
+              formSchema: v.configType === 'form' ? v.config?.jsonSchema : undefined,
+              savedAt: v.updatedAt,
+            }));
+            setStepConfigHistory(prev => ({ ...prev, [key]: versions }));
+            setConfigModal({ step, phase, mode: 'versions' });
+          })
+          .catch(() => setConfigModal({ step, phase, mode: 'versions' }));
+      } else {
+        setConfigModal({ step, phase, mode: 'versions' });
+      }
+      return;
+    }
+    const modeMap = { form: 'form', 'external-api': 'external-api', webhook: 'webhook', edit: null };
+    let mode = modeMap[action];
+    if (action === 'edit') {
+      const key = `${phase.id}#${step.id}`;
+      mode = stepConfigs[key]?.configType || 'form';
+    }
+    if (mode) {
+      setConfigModal({ step, phase, mode });
+    }
+  }, [stepConfigs, useApiPersistence, programId]);
+
+  const handleConfigSaved = useCallback(async (phaseId, stepId, config) => {
+    const key = `${phaseId}#${stepId}`;
+    // Optimistic local update
+    setStepConfigs(prev => ({ ...prev, [key]: config }));
+    setStepConfigHistory(prev => ({
+      ...prev,
+      [key]: [...(prev[key] || []), { ...config, savedAt: new Date().toISOString() }],
+    }));
+    // Persist to API
+    if (useApiPersistence) {
+      try {
+        const saved = await api.saveStepConfig(programId, phaseId, stepId, config);
+        setStepConfigs(prev => ({
+          ...prev,
+          [key]: { ...prev[key], version: saved.version, updatedAt: saved.updatedAt },
+        }));
+      } catch (err) {
+        console.error('Failed to save step config:', err);
+      }
+    }
+  }, [programId, useApiPersistence]);
+
+  const handleRollback = useCallback(async (phaseId, stepId, versionEntry) => {
+    const key = `${phaseId}#${stepId}`;
+    if (useApiPersistence) {
+      try {
+        const result = await api.rollbackStepConfig(programId, phaseId, stepId, versionEntry.version);
+        const config = {
+          configType: result.configType,
+          ...(result.configType === 'form' ? { formConfig: result.config } : {}),
+          ...(result.configType === 'external-api' ? { apiConfig: result.config } : {}),
+          ...(result.configType === 'webhook' ? { webhookConfig: result.config } : {}),
+          phaseId, stepId,
+          version: result.version,
+          updatedAt: result.updatedAt,
+        };
+        setStepConfigs(prev => ({ ...prev, [key]: config }));
+      } catch (err) {
+        console.error('Failed to rollback:', err);
+      }
+    } else {
+      const rolledBack = {
+        ...versionEntry,
+        version: (stepConfigs[key]?.version || 0) + 1,
+        updatedAt: new Date().toISOString(),
+        rolledBackFrom: versionEntry.version,
+      };
+      setStepConfigs(prev => ({ ...prev, [key]: rolledBack }));
+      setStepConfigHistory(prev => ({
+        ...prev,
+        [key]: [...(prev[key] || []), { ...rolledBack, savedAt: new Date().toISOString() }],
+      }));
+    }
+  }, [programId, useApiPersistence, stepConfigs]);
+
+  // D3 Visualization
   useEffect(() => {
     if (!svgRef.current || !flowDefinition) return;
 
@@ -190,7 +333,12 @@ export default function DefinitionView({ flowDefinition, programName }) {
       const stepG = g.append('g')
         .attr('transform', `translate(${pos.x}, ${pos.y})`)
         .style('cursor', 'pointer')
-        .on('click', () => setSelectedStation(selectedStation?.id === step.id ? null : step));
+        .on('click', () => setSelectedStation(selectedStation?.id === step.id ? null : step))
+        .on('contextmenu', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setContextMenu({ x: event.clientX, y: event.clientY, step, phase });
+        });
 
       stepG.append('circle').attr('r', nodeRadius)
         .attr('fill', isTerminal ? nodeColor : 'white')
@@ -204,6 +352,17 @@ export default function DefinitionView({ flowDefinition, programName }) {
       if (step.custom) {
         stepG.append('circle').attr('cx', 12).attr('cy', -12).attr('r', 6)
           .attr('fill', '#8b5cf6').attr('stroke', 'white').attr('stroke-width', 2);
+      }
+
+      // Config type badge
+      const configKey = `${step.phase}#${step.id}`;
+      const badge = CONFIG_BADGE[stepConfigs[configKey]?.configType];
+      if (badge) {
+        stepG.append('circle').attr('cx', -12).attr('cy', -12).attr('r', 7)
+          .attr('fill', badge.color).attr('stroke', 'white').attr('stroke-width', 2);
+        stepG.append('text').attr('x', -12).attr('y', -9)
+          .attr('text-anchor', 'middle').attr('font-size', '8px').attr('font-weight', '700')
+          .attr('fill', 'white').text(badge.label);
       }
 
       stepG.append('text').attr('y', labelOffset).attr('text-anchor', 'middle')
@@ -221,7 +380,7 @@ export default function DefinitionView({ flowDefinition, programName }) {
         .attr('stroke', '#cbd5e1').attr('stroke-width', 2).attr('stroke-linecap', 'round');
     }
 
-  }, [flowDefinition, selectedStation, getEnabledSteps, phases]);
+  }, [flowDefinition, selectedStation, getEnabledSteps, phases, stepConfigs]);
 
   const handleZoomIn = useCallback(() => {
     if (zoomRef.current && svgRef.current) {
@@ -273,19 +432,33 @@ export default function DefinitionView({ flowDefinition, programName }) {
                   </span>
                   <span className="text-[10px] text-slate-400 ml-auto">{steps.length}</span>
                 </div>
-                {steps.map((step) => (
-                  <div
-                    key={step.id}
-                    className={`text-xs py-1 pl-4 rounded cursor-pointer transition-colors ${
-                      selectedStation?.id === step.id
-                        ? 'text-slate-900 bg-white font-medium'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                    onClick={() => setSelectedStation(selectedStation?.id === step.id ? null : { ...step, phase: phase.id })}
-                  >
-                    {step.name}
-                  </div>
-                ))}
+                {steps.map((step) => {
+                  const configKey = `${phase.id}#${step.id}`;
+                  const hasConfig = !!stepConfigs[configKey];
+                  return (
+                    <div
+                      key={step.id}
+                      className={`flex items-center gap-1.5 text-xs py-1 pl-4 rounded cursor-pointer transition-colors ${
+                        selectedStation?.id === step.id
+                          ? 'text-slate-900 bg-white font-medium'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      onClick={() => setSelectedStation(selectedStation?.id === step.id ? null : { ...step, phase: phase.id })}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenu({ x: e.clientX, y: e.clientY, step: { ...step, phase: phase.id }, phase });
+                      }}
+                    >
+                      {hasConfig && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: CONFIG_BADGE[stepConfigs[configKey].configType]?.color || '#94a3b8' }}
+                        />
+                      )}
+                      {step.name}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -334,6 +507,36 @@ export default function DefinitionView({ flowDefinition, programName }) {
           )}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <StepContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          step={contextMenu.step}
+          phase={contextMenu.phase}
+          hasConfig={!!stepConfigs[`${contextMenu.phase.id}#${contextMenu.step.id}`]}
+          onClose={() => setContextMenu(null)}
+          onSelect={handleContextMenuSelect}
+        />
+      )}
+
+      {/* Config Modal */}
+      {configModal && (
+        <StepConfigModal
+          isOpen={!!configModal}
+          onClose={() => setConfigModal(null)}
+          step={configModal.step}
+          phase={configModal.phase}
+          programId={programId}
+          mode={configModal.mode}
+          onConfigSaved={handleConfigSaved}
+          onRollback={handleRollback}
+          flowDefinition={flowDefinition}
+          configHistory={stepConfigHistory[`${configModal.phase.id}#${configModal.step.id}`] || []}
+          currentConfig={stepConfigs[`${configModal.phase.id}#${configModal.step.id}`] || null}
+        />
+      )}
     </div>
   );
 }

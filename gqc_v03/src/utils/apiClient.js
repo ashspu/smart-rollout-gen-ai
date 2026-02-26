@@ -125,6 +125,52 @@ export function listTemplates() {
   return request('/templates');
 }
 
+// ── Step Configuration ──
+
+export function listAllStepConfigs(programId) {
+  return request(`/programs/${programId}/step-configs`);
+}
+
+export function getStepConfig(programId, phaseId, stepId) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/config`);
+}
+
+export function saveStepConfig(programId, phaseId, stepId, config) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/config`, {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+}
+
+export function deleteStepConfig(programId, phaseId, stepId) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/config`, {
+    method: 'DELETE',
+  });
+}
+
+export function listStepConfigVersions(programId, phaseId, stepId) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/config/versions`);
+}
+
+export function rollbackStepConfig(programId, phaseId, stepId, version) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/config/rollback/${version}`, {
+    method: 'POST',
+  });
+}
+
+export function submitStepForm(programId, phaseId, stepId, data) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/submissions`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function testExternalApi(programId, phaseId, stepId) {
+  return request(`/programs/${programId}/steps/${phaseId}/${stepId}/test-api`, {
+    method: 'POST',
+  });
+}
+
 // ── Utility ──
 
 export function isConfigured() {
@@ -143,5 +189,13 @@ export default {
   getExecutionStatus,
   saveTemplate,
   listTemplates,
+  listAllStepConfigs,
+  getStepConfig,
+  saveStepConfig,
+  deleteStepConfig,
+  listStepConfigVersions,
+  rollbackStepConfig,
+  submitStepForm,
+  testExternalApi,
   isConfigured,
 };

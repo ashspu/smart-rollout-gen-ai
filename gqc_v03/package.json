@@ -9,6 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@rjsf/core": "^6.3.1",
+    "@rjsf/utils": "^6.3.1",
+    "@rjsf/validator-ajv8": "^6.3.1",
     "amazon-cognito-identity-js": "^6.3.16",
     "d3": "^7.9.0",
     "date-fns": "^2.30.0",

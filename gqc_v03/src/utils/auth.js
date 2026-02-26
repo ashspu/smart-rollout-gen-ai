@@ -1,8 +1,15 @@
-import {
-  CognitoUserPool,
-  CognitoUser,
-  AuthenticationDetails,
-} from 'amazon-cognito-identity-js';
+let cognitoModule = null;
+
+async function loadCognito() {
+  if (cognitoModule) return cognitoModule;
+  try {
+    cognitoModule = await import('amazon-cognito-identity-js');
+    return cognitoModule;
+  } catch (e) {
+    console.warn('Cognito SDK not available, auth disabled:', e.message);
+    return null;
+  }
+}
 
 const POOL_DATA = {
   UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
@@ -10,10 +17,12 @@ const POOL_DATA = {
 };
 
 let userPool = null;
-function getPool() {
-  if (!userPool && POOL_DATA.UserPoolId && POOL_DATA.ClientId) {
-    userPool = new CognitoUserPool(POOL_DATA);
-  }
+async function getPool() {
+  if (!POOL_DATA.UserPoolId || !POOL_DATA.ClientId) return null;
+  if (userPool) return userPool;
+  const sdk = await loadCognito();
+  if (!sdk) return null;
+  userPool = new sdk.CognitoUserPool(POOL_DATA);
   return userPool;
 }
 
@@ -22,14 +31,15 @@ function getPool() {
  * Returns { idToken, accessToken, refreshToken, email } on success.
  * Throws { code: 'NEW_PASSWORD_REQUIRED', cognitoUser } if first login.
  */
-export function signIn(email, password) {
+export async function signIn(email, password) {
+  const sdk = await loadCognito();
+  const pool = await getPool();
+  if (!pool || !sdk) throw new Error('Cognito not configured');
+
+  const cognitoUser = new sdk.CognitoUser({ Username: email, Pool: pool });
+  const authDetails = new sdk.AuthenticationDetails({ Username: email, Password: password });
+
   return new Promise((resolve, reject) => {
-    const pool = getPool();
-    if (!pool) return reject(new Error('Cognito not configured'));
-
-    const cognitoUser = new CognitoUser({ Username: email, Pool: pool });
-    const authDetails = new AuthenticationDetails({ Username: email, Password: password });
-
     cognitoUser.authenticateUser(authDetails, {
       onSuccess(session) {
         resolve({
@@ -43,7 +53,6 @@ export function signIn(email, password) {
         reject(err);
       },
       newPasswordRequired(userAttributes) {
-        // First login — admin-created user must set a new password
         const err = new Error('New password required');
         err.code = 'NEW_PASSWORD_REQUIRED';
         err.cognitoUser = cognitoUser;
@@ -79,14 +88,14 @@ export function completeNewPassword(cognitoUser, newPassword) {
  * Get the current session (auto-refreshes if expired).
  * Returns { idToken, email } or null if not authenticated.
  */
-export function getCurrentSession() {
+export async function getCurrentSession() {
+  const pool = await getPool();
+  if (!pool) return null;
+
+  const user = pool.getCurrentUser();
+  if (!user) return null;
+
   return new Promise((resolve) => {
-    const pool = getPool();
-    if (!pool) return resolve(null);
-
-    const user = pool.getCurrentUser();
-    if (!user) return resolve(null);
-
     user.getSession((err, session) => {
       if (err || !session?.isValid()) return resolve(null);
       resolve({
@@ -100,8 +109,8 @@ export function getCurrentSession() {
 /**
  * Sign out — clears local tokens.
  */
-export function signOut() {
-  const pool = getPool();
+export async function signOut() {
+  const pool = await getPool();
   if (!pool) return;
   const user = pool.getCurrentUser();
   if (user) user.signOut();
@@ -111,6 +120,5 @@ export function signOut() {
  * Synchronous check: is there a current user in local storage?
  */
 export function isAuthenticated() {
-  const pool = getPool();
-  return !!pool?.getCurrentUser();
+  return !!userPool?.getCurrentUser();
 }

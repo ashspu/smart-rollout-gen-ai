@@ -50,6 +50,14 @@ export class SmartRolloutStack extends cdk.Stack {
       partitionKey: { name: 'executionId', type: dynamodb.AttributeType.STRING },
     });
 
+    const stepConfigsTable = new dynamodb.Table(this, 'StepConfigsTable', {
+      tableName: 'SmartRollout-StepConfigs',
+      partitionKey: { name: 'programId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // =========================================================================
     // S3 Bucket for execution data (Parquet/NDJSON output)
     // =========================================================================
@@ -108,6 +116,7 @@ export class SmartRolloutStack extends cdk.Stack {
       PROGRAMS_TABLE: programsTable.tableName,
       TEMPLATES_TABLE: templatesTable.tableName,
       EXECUTIONS_TABLE: executionsTable.tableName,
+      STEP_CONFIGS_TABLE: stepConfigsTable.tableName,
       DATA_BUCKET: dataBucket.bucketName,
       REGION: this.region,
       NODE_OPTIONS: '--enable-source-maps',
@@ -166,6 +175,9 @@ export class SmartRolloutStack extends cdk.Stack {
     const saveTemplateFn     = makeLambda('SaveTemplateFn',     'save-template');
     const listTemplatesFn    = makeLambda('ListTemplatesFn',    'list-templates');
 
+    // Step configuration CRUD
+    const stepConfigFn       = makeLambda('StepConfigFn',       'step-config');
+
     // New execution system handlers
     const startExecutionFn   = makeLambda('StartExecutionFn',   'start-execution', {}, { timeout: 60, memory: 512 });
     const executionStatusFn  = makeLambda('ExecutionStatusFn',  'execution-status');
@@ -194,6 +206,8 @@ export class SmartRolloutStack extends cdk.Stack {
     executionsTable.grantReadData(executionStatusFn);
     executionsTable.grantReadWriteData(stepEndpointFn);
     executionsTable.grantReadWriteData(determineNextFn);
+
+    stepConfigsTable.grantReadWriteData(stepConfigFn);
 
     // S3 permissions
     dataBucket.grantReadWrite(startExecutionFn);
@@ -374,6 +388,28 @@ export class SmartRolloutStack extends cdk.Stack {
     const executionInstance = executionsRoot.addResource('{rolloutInstanceId}');
     const executionStatus = executionInstance.addResource('status');
     executionStatus.addMethod('GET', new apigateway.LambdaIntegration(executionStatusFn), authMethodOptions);
+
+    // /programs/{programId}/step-configs  (list all configs for program)
+    const stepConfigs = program.addResource('step-configs');
+    stepConfigs.addMethod('GET', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
+
+    // /programs/{programId}/steps/{phaseId}/{stepId}/config
+    const steps = program.addResource('steps');
+    const phaseIdResource = steps.addResource('{phaseId}');
+    const stepIdResource = phaseIdResource.addResource('{stepId}');
+    const configResource = stepIdResource.addResource('config');
+    configResource.addMethod('GET', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
+    configResource.addMethod('PUT', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
+    configResource.addMethod('DELETE', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
+
+    // /programs/{programId}/steps/{phaseId}/{stepId}/config/versions
+    const versions = configResource.addResource('versions');
+    versions.addMethod('GET', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
+
+    // /programs/{programId}/steps/{phaseId}/{stepId}/config/rollback/{version}
+    const rollbackRes = configResource.addResource('rollback');
+    const rollbackVersion = rollbackRes.addResource('{version}');
+    rollbackVersion.addMethod('POST', new apigateway.LambdaIntegration(stepConfigFn), authMethodOptions);
 
     // /templates
     const templates = api.root.addResource('templates');

@@ -81,7 +81,7 @@ export default function ProgramPage({ programId }) {
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'definition' ? (
-          <DefinitionView flowDefinition={flowDefinition} programName={programName} />
+          <DefinitionView flowDefinition={flowDefinition} programName={programName} programId={programId} isDemo={isDemoProgram} />
         ) : (
           <div className="h-full overflow-y-auto px-6">
             <ExecutionView
